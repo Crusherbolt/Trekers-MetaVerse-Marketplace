@@ -20,8 +20,7 @@ export default function ERC1155Project() {
   
   const [metadata, setMetadata] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [availableNFTs, setAvailableNFTs] = useState<any[]>([]);
-  const [userNFTs, setUserNFTs] = useState<any[]>([]);
+  const [availableTokens, setAvailableTokens] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Get contract instance
@@ -35,12 +34,6 @@ export default function ERC1155Project() {
   const { data: contractURI } = useReadContract({
     contract,
     method: "function contractURI() view returns (string)",
-  });
-
-  // Read total supply
-  const { data: totalSupply, isLoading: isTotalSupplyLoading } = useReadContract({
-    contract,
-    method: "function totalSupply() view returns (uint256)",
   });
 
   // Fetch metadata from contractURI
@@ -59,61 +52,36 @@ export default function ERC1155Project() {
         .catch((err) => {
           console.error('Metadata fetch error:', err);
           setError('Failed to load collection metadata');
+          setMetadata(null);
         });
     }
   }, [contractURI]);
 
-  // Fetch available NFTs and user's NFTs
+  // Fetch NFT data for known token IDs
   useEffect(() => {
     const fetchNFTData = async () => {
-      if (!address) return;
+      if (!address) {
+        setLoading(false);
+        return;
+      }
 
       try {
         setLoading(true);
-        const nftData = [];
-        const userNftData = [];
-
-        // Fetch data for multiple token IDs (adjust range based on your collection)
-        for (let tokenId = 0; tokenId < 10; tokenId++) { // Checking first 10 token IDs
+        const tokenData = [];
+        
+        // Check token IDs 0-20 (you can adjust this range)
+        const tokenIdsToCheck = Array.from({length: 21}, (_, i) => i);
+        
+        for (const tokenId of tokenIdsToCheck) {
           try {
-            // Check if token exists by checking total supply
-            const tokenSupply = await useReadContract({
-              contract,
-              method: "function totalSupply(uint256) view returns (uint256)",
-              params: [BigInt(tokenId)],
-            });
-
-            if (tokenSupply && tokenSupply > 0) {
-              // Get user balance for this token
-              const userBalance = await useReadContract({
-                contract,
-                method: "function balanceOf(address, uint256) view returns (uint256)",
-                params: [address, BigInt(tokenId)],
-              });
-
-              // Get token URI for metadata
-              const tokenURI = await useReadContract({
-                contract,
-                method: "function uri(uint256) view returns (string)",
-                params: [BigInt(tokenId)],
-              });
-
-              // Get price if your contract has pricing function
-              let price = "0.001"; // Default price in BDAG
-              try {
-                const tokenPrice = await useReadContract({
-                  contract,
-                  method: "function getPrice(uint256) view returns (uint256)",
-                  params: [BigInt(tokenId)],
-                });
-                if (tokenPrice) {
-                  price = formatEther(tokenPrice);
-                }
-              } catch (priceError) {
-                // If no pricing function, use default
-                console.log(`No price function for token ${tokenId}, using default`);
-              }
-
+            // Get user balance for this token
+            const userBalance = await getUserBalance(tokenId);
+            
+            // Get token URI
+            const tokenURI = await getTokenURI(tokenId);
+            
+            if (tokenURI || userBalance > 0) {
+              // Fetch token metadata
               let tokenMetadata = null;
               if (tokenURI) {
                 try {
@@ -126,37 +94,29 @@ export default function ERC1155Project() {
                     tokenMetadata = await response.json();
                   }
                 } catch (metadataError) {
-                  console.error(`Failed to fetch metadata for token ${tokenId}:`, metadataError);
+                  console.log(`Could not fetch metadata for token ${tokenId}`);
                 }
               }
 
-              const nftInfo = {
+              const tokenInfo = {
                 tokenId: tokenId.toString(),
-                supply: tokenSupply.toString(),
-                price: price,
+                userBalance: userBalance.toString(),
                 metadata: tokenMetadata,
-                name: tokenMetadata?.name || `NFT #${tokenId}`,
-                description: tokenMetadata?.description || "Trekers MetaVerse NFT",
+                name: tokenMetadata?.name || `Trekers NFT #${tokenId}`,
+                description: tokenMetadata?.description || "Trekers MetaVerse Collectible",
                 image: tokenMetadata?.image || "/placeholder-nft.png",
-                userBalance: userBalance ? userBalance.toString() : "0",
+                uri: tokenURI,
               };
 
-              // Add to available NFTs
-              nftData.push(nftInfo);
-
-              // Add to user NFTs if they own any
-              if (userBalance && userBalance > 0) {
-                userNftData.push(nftInfo);
-              }
+              tokenData.push(tokenInfo);
             }
-          } catch (tokenError) {
-            // Token doesn't exist or error fetching, skip
+          } catch (error) {
+            // Skip this token ID if there's an error
             continue;
           }
         }
 
-        setAvailableNFTs(nftData);
-        setUserNFTs(userNftData);
+        setAvailableTokens(tokenData);
       } catch (error) {
         console.error('Error fetching NFT data:', error);
         setError('Failed to load NFT data');
@@ -166,21 +126,60 @@ export default function ERC1155Project() {
     };
 
     fetchNFTData();
-  }, [address, contract]);
+  }, [address]);
 
-  // Purchase NFT function
-  const buyNFT = (tokenId: string, price: string) => {
+  // Helper function to get user balance
+  const getUserBalance = async (tokenId: number) => {
+    try {
+      const balance = await useReadContract({
+        contract,
+        method: "function balanceOf(address, uint256) view returns (uint256)",
+        params: [address, BigInt(tokenId)],
+      });
+      return balance || 0n;
+    } catch (error) {
+      return 0n;
+    }
+  };
+
+  // Helper function to get token URI
+  const getTokenURI = async (tokenId: number) => {
+    try {
+      const uri = await useReadContract({
+        contract,
+        method: "function uri(uint256) view returns (string)",
+        params: [BigInt(tokenId)],
+      });
+      return uri;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  // Individual token balance hooks for display
+  const TokenBalance = ({ tokenId }: { tokenId: string }) => {
+    const { data: balance, isLoading } = useReadContract({
+      contract,
+      method: "function balanceOf(address, uint256) view returns (uint256)",
+      params: [address, BigInt(tokenId)],
+    });
+
+    if (isLoading) return <span>Loading...</span>;
+    return <span>{balance?.toString() || "0"}</span>;
+  };
+
+  // Mint/Buy functions
+  const mintNFT = (tokenId: string) => {
     return prepareContractCall({
       contract,
       method: "function mint(address to, uint256 id, uint256 amount, bytes data)",
       params: [address, BigInt(tokenId), 1n, "0x"],
       overrides: {
-        value: toWei(price), // Send BDAG payment
+        value: toWei("0.001"), // 0.001 BDAG price
       },
     });
   };
 
-  // Free claim function
   const claimFreeNFT = (tokenId: string) => {
     return prepareContractCall({
       contract,
@@ -209,110 +208,108 @@ export default function ERC1155Project() {
       />
       
       <div className={styles.grid}>
-        {/* Collection Stats */}
+        {/* Quick Mint Section */}
         <div className={styles.componentCard}>
-          <h3>📊 Collection Stats</h3>
-          <div className={styles.statsGrid}>
-            <div className={styles.stat}>
-              <span className={styles.statLabel}>Total Tokens:</span>
-              <span className={styles.statValue}>
-                {isTotalSupplyLoading ? "Loading..." : totalSupply?.toString() || "0"}
-              </span>
-            </div>
-            <div className={styles.stat}>
-              <span className={styles.statLabel}>Available NFTs:</span>
-              <span className={styles.statValue}>{availableNFTs.length}</span>
-            </div>
-            <div className={styles.stat}>
-              <span className={styles.statLabel}>You Own:</span>
-              <span className={styles.statValue}>{userNFTs.length} NFTs</span>
-            </div>
-          </div>
+          <h3>🎁 Free Claim</h3>
+          <p>Claim your first Trekers MetaVerse NFT for FREE!</p>
+          <TransactionButton
+            transaction={() => claimFreeNFT("0")}
+            onTransactionConfirmed={() => 
+              alert("🎉 Successfully claimed your NFT!")
+            }
+          >
+            Claim NFT #0 (FREE)
+          </TransactionButton>
         </div>
 
-        {/* Your NFTs */}
+        {/* Buy NFT Section */}
         <div className={styles.componentCard}>
-          <h3>🎭 Your NFT Collection</h3>
-          {loading ? (
-            <p>Loading your NFTs...</p>
-          ) : userNFTs.length > 0 ? (
-            <div className={styles.nftGrid}>
-              {userNFTs.map((nft) => (
-                <div key={nft.tokenId} className={styles.ownedNFT}>
-                  <img 
-                    src={nft.image} 
-                    alt={nft.name}
-                    className={styles.nftImage}
-                  />
-                  <div className={styles.nftInfo}>
-                    <h4>{nft.name}</h4>
-                    <p>ID: #{nft.tokenId}</p>
-                    <p>Owned: {nft.userBalance}</p>
-                  </div>
-                </div>
-              ))}
+          <h3>💎 Buy Premium NFT</h3>
+          <p>Purchase premium NFTs with BDAG tokens!</p>
+          <TransactionButton
+            transaction={() => mintNFT("1")}
+            onTransactionConfirmed={() => 
+              alert("🎊 Successfully purchased premium NFT!")
+            }
+          >
+            Buy NFT #1 (0.001 BDAG)
+          </TransactionButton>
+        </div>
+
+        {/* Your Collection Stats */}
+        <div className={styles.componentCard}>
+          <h3>📊 Your Collection</h3>
+          <div className={styles.collectionStats}>
+            <div className={styles.statItem}>
+              <span>NFT #0:</span>
+              <TokenBalance tokenId="0" />
             </div>
-          ) : (
-            <div className={styles.noNFTs}>
-              <p>🤷‍♂️ You don't own any NFTs yet</p>
-              <small>Browse available NFTs below to start collecting!</small>
+            <div className={styles.statItem}>
+              <span>NFT #1:</span>
+              <TokenBalance tokenId="1" />
             </div>
-          )}
+            <div className={styles.statItem}>
+              <span>NFT #2:</span>
+              <TokenBalance tokenId="2" />
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Available NFTs for Purchase */}
-      <div className={styles.marketplace}>
-        <h2>🛒 NFT Marketplace</h2>
-        <p>Discover and collect unique Trekers MetaVerse NFTs</p>
-        
+      {/* NFT Gallery */}
+      <div className={styles.nftGallery}>
+        <h2>🖼️ Available NFTs</h2>
         {loading ? (
           <div className={styles.loading}>
-            <p>🔄 Loading available NFTs...</p>
+            <p>🔄 Loading NFT collection...</p>
           </div>
-        ) : availableNFTs.length > 0 ? (
-          <div className={styles.nftMarketplace}>
-            {availableNFTs.map((nft) => (
-              <div key={nft.tokenId} className={styles.nftCard}>
+        ) : availableTokens.length > 0 ? (
+          <div className={styles.nftGrid}>
+            {availableTokens.map((token) => (
+              <div key={token.tokenId} className={styles.nftCard}>
                 <div className={styles.nftImageContainer}>
                   <img 
-                    src={nft.image} 
-                    alt={nft.name}
-                    className={styles.marketplaceNftImage}
+                    src={token.image} 
+                    alt={token.name}
+                    className={styles.nftImage}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "/placeholder-nft.png";
+                    }}
                   />
-                  {nft.userBalance > 0 && (
-                    <div className={styles.ownedBadge}>✅ Owned</div>
+                  {parseInt(token.userBalance) > 0 && (
+                    <div className={styles.ownedBadge}>
+                      ✅ Owned: {token.userBalance}
+                    </div>
                   )}
                 </div>
                 
                 <div className={styles.nftDetails}>
-                  <h3>{nft.name}</h3>
-                  <p className={styles.nftDescription}>{nft.description}</p>
+                  <h3>{token.name}</h3>
+                  <p className={styles.nftDescription}>{token.description}</p>
                   
-                  <div className={styles.nftStats}>
-                    <span>🆔 ID: #{nft.tokenId}</span>
-                    <span>📦 Supply: {nft.supply}</span>
-                    <span>💰 {nft.price} BDAG</span>
+                  <div className={styles.nftMeta}>
+                    <span>🆔 Token ID: #{token.tokenId}</span>
+                    <span>💼 You own: {token.userBalance}</span>
                   </div>
 
                   <div className={styles.nftActions}>
-                    {parseFloat(nft.price) === 0 ? (
+                    {token.tokenId === "0" ? (
                       <TransactionButton
-                        transaction={() => claimFreeNFT(nft.tokenId)}
+                        transaction={() => claimFreeNFT(token.tokenId)}
                         onTransactionConfirmed={() => 
-                          alert(`🎉 Successfully claimed ${nft.name}!`)
+                          alert(`🎉 Successfully claimed ${token.name}!`)
                         }
                       >
                         🎁 Claim Free
                       </TransactionButton>
                     ) : (
                       <TransactionButton
-                        transaction={() => buyNFT(nft.tokenId, nft.price)}
+                        transaction={() => mintNFT(token.tokenId)}
                         onTransactionConfirmed={() => 
-                          alert(`🎊 Successfully purchased ${nft.name}!`)
+                          alert(`🎊 Successfully purchased ${token.name}!`)
                         }
                       >
-                        💎 Buy for {nft.price} BDAG
+                        💎 Buy (0.001 BDAG)
                       </TransactionButton>
                     )}
                   </div>
@@ -321,33 +318,53 @@ export default function ERC1155Project() {
             ))}
           </div>
         ) : (
-          <div className={styles.noMarketplace}>
-            <p>📭 No NFTs available in the marketplace</p>
-            <small>Check back later for new drops!</small>
+          <div className={styles.noNFTs}>
+            <p>🤔 No NFTs found in this collection</p>
+            <p>Try claiming the free NFT above to get started!</p>
           </div>
         )}
       </div>
 
-      {/* Network Info */}
-      <div className={styles.networkInfo}>
+      {/* Manual Token Check */}
+      <div className={styles.manualCheck}>
+        <h3>🔍 Check Specific Token</h3>
+        <p>Enter a token ID to check if it exists:</p>
+        <div className={styles.tokenChecker}>
+          <input 
+            type="number" 
+            placeholder="Enter Token ID" 
+            className={styles.tokenInput}
+            onChange={(e) => {
+              const tokenId = e.target.value;
+              if (tokenId) {
+                // You can add logic here to check specific token
+                console.log(`Checking token ${tokenId}`);
+              }
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Contract Info */}
+      <div className={styles.contractInfo}>
+        <h3>📋 Contract Information</h3>
         <div className={styles.infoGrid}>
-          <div className={styles.infoCard}>
-            <h4>🌐 Network</h4>
-            <p><strong>BlockDAG Primordial Testnet</strong></p>
-            <p>Chain ID: 1043</p>
+          <div className={styles.infoItem}>
+            <strong>Contract Address:</strong>
+            <code>{ERC1155_CONTRACT_ADDRESS}</code>
           </div>
-          <div className={styles.infoCard}>
-            <h4>🔗 Contract</h4>
-            <p>
-              <code>{ERC1155_CONTRACT_ADDRESS.slice(0, 6)}...{ERC1155_CONTRACT_ADDRESS.slice(-4)}</code>
-            </p>
+          <div className={styles.infoItem}>
+            <strong>Network:</strong>
+            <span>BlockDAG Primordial Testnet (Chain ID: 1043)</span>
+          </div>
+          <div className={styles.infoItem}>
+            <strong>Explorer:</strong>
             <a 
               href={`https://primordial.bdagscan.com/address/${ERC1155_CONTRACT_ADDRESS}`}
               target="_blank"
               rel="noopener noreferrer"
-              className={styles.explorerLink}
             >
-              🔍 View on Explorer
+              View on Primordial Explorer 🔍
             </a>
           </div>
         </div>

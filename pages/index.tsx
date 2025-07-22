@@ -9,7 +9,7 @@ const Home: NextPage = () => {
       <div className={styles.container}>
         <div className={styles.header}>
           <h1 className={styles.title}>
-            My {" "}
+          {" "}
             <span className={styles.gradientText0}>
               Contracts
             </span>
