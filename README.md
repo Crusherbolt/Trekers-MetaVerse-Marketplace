@@ -3,8 +3,6 @@ Here's the updated README with the additional installation commands for npm, thi
 # 🎮 TREKER: Metaverse Game
 *Revolutionary Unity WebGL metaverse with blockchain-powered virtual real estate*
 
-[![Unity](https://img.shields.io/s.io/badge/BlockDAGtps://img.shields.io/badge Overview
-
 TREKER revolutionizes virtual gaming by combining classic Monopoly mechanics with modern life simulation in a 3D metaverse where players truly own their digital assets. Built with Unity WebGL and powered by BlockDAG blockchain, players can buy, sell, and trade virtual real estate NFTs with real economic value.
 
 **🏆 Built for BlockDAG Hackathon 2025 | Theme: On-Chain Games & Experiences**
