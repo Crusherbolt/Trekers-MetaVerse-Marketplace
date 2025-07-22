@@ -4,8 +4,8 @@ import {
   TransactionButton,
   useReadContract,
 } from "thirdweb/react";
-import { getContract, prepareContractCall } from "thirdweb";
-import { ethers, formatEther } from "ethers";
+import { getContract, prepareContractCall, toWei } from "thirdweb";
+import { formatEther } from "ethers";
 import HeroCard from "../../components/hero-card";
 import { TIP_JAR_CONTRACT_ADDRESS } from "../../const/addresses";
 import styles from "../../styles/Home.module.css";
@@ -17,11 +17,16 @@ import {
 export default function TipJarProject() {
   const account = useActiveAccount();
   const address = account?.address;
+  
+  const [metadata, setMetadata] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [tipAmount, setTipAmount] = useState("1");
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
 
   // Get contract instance
   const contract = getContract({
     client,
-    chain: primordialTestnet,
+    chain: primordialTestnet, // Your BlockDAG Primordial Testnet
     address: TIP_JAR_CONTRACT_ADDRESS,
   });
 
@@ -32,7 +37,6 @@ export default function TipJarProject() {
   });
 
   // Fetch metadata from contractURI
-  const [metadata, setMetadata] = useState<any>(null);
   useEffect(() => {
     if (contractURI && typeof contractURI === "string") {
       let uri = contractURI;
@@ -40,9 +44,16 @@ export default function TipJarProject() {
         uri = uri.replace("ipfs://", "https://ipfs.io/ipfs/");
       }
       fetch(uri)
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) throw new Error('Failed to fetch metadata');
+          return res.json();
+        })
         .then(setMetadata)
-        .catch(() => setMetadata(null));
+        .catch((err) => {
+          console.error('Metadata fetch error:', err);
+          setError('Failed to load project metadata');
+          setMetadata(null);
+        });
     }
   }, [contractURI]);
 
@@ -61,13 +72,13 @@ export default function TipJarProject() {
     method: "function owner() view returns (address)",
   });
 
-  // Prepare transactions
+  // Prepare transactions - FIXED: Using ThirdWeb's toWei
   const sendTipTx = prepareContractCall({
     contract,
     method: "function sendTip() payable",
     params: [],
     overrides: {
-      value: ethers.parseEther("0.001"),
+      value: toWei(tipAmount), // Fixed: Using ThirdWeb's toWei instead of ethers.parseEther
     },
   });
 
@@ -77,47 +88,160 @@ export default function TipJarProject() {
     params: [],
   });
 
+  const isOwner = owner && owner.toLowerCase() === address?.toLowerCase();
+
+  if (error) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.error}>
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.container}>
       <HeroCard
         isLoading={!metadata}
-        title={metadata?.name || ""}
-        description={metadata?.description || ""}
+        title={metadata?.name || "Trekers MetaVerse Tip Jar"}
+        description={metadata?.description || "Support the Trekers MetaVerse with BDAG tips"}
         image={metadata?.image}
       />
+      
       <div className={styles.grid}>
+        {/* Tip Section */}
         <div className={styles.componentCard}>
-          <h3>Leave a Tip</h3>
-          <p>Tip in MATIC and record it on the blockchain.</p>
-          <TransactionButton transaction={() => sendTipTx}>
-            Tip (0.001 MATIC)
+          <h3>🌌 Support Trekers MetaVerse</h3>
+          <p>Leave a tip in BDAG and record it on the BlockDAG blockchain.</p>
+          
+          <div className={styles.inputGroup}>
+            <label htmlFor="tipAmount" className={styles.label}>
+              Tip Amount (BDAG):
+            </label>
+            <input
+              id="tipAmount"
+              type="number"
+              step="1"
+              min="1"
+              value={tipAmount}
+              onChange={(e) => setTipAmount(e.target.value)}
+              placeholder="1"
+              className={styles.tipInput}
+            />
+          </div>
+          
+          <TransactionButton 
+            transaction={() => sendTipTx}
+            onTransactionConfirmed={() => 
+              alert(`🚀 Thank you for supporting Trekers MetaVerse with ${tipAmount} BDAG!`)
+            }
+            onError={() => 
+              alert("Transaction failed. Please try again.")
+            }
+          >
+            {`💎 Tip ${tipAmount} BDAG`}
           </TransactionButton>
         </div>
+
+        {/* Balance Display */}
         <div className={styles.componentCard}>
-          <h3>Tip Jar Balance</h3>
+          <h3>🏦 MetaVerse Treasury Balance</h3>
           {isTipJarBalanceLoading ? (
-            <p>Loading balance...</p>
+            <div className={styles.loadingState}>
+              <p>Loading treasury balance...</p>
+            </div>
           ) : (
-            <p>
-              Balance: {tipJarBalance ? formatEther(tipJarBalance) : "0"}
-            </p>
+            <div className={styles.balanceSection}>
+              <p className={styles.balanceAmount}>
+                <strong>Balance: {tipJarBalance ? formatEther(tipJarBalance) : "0"} BDAG</strong>
+              </p>
+              <small className={styles.balanceSubtext}>
+                Total community contributions received
+              </small>
+              <div className={styles.explorerLink}>
+                <a 
+                  href={`https://primordial.bdagscan.com/address/${TIP_JAR_CONTRACT_ADDRESS}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.linkButton}
+                >
+                  🔍 View on Primordial Explorer
+                </a>
+              </div>
+            </div>
           )}
         </div>
+
+        {/* Withdraw Section */}
         <div className={styles.componentCard}>
-          <h3>Withdraw Balance</h3>
+          <h3>⚡ Treasury Management</h3>
           {isOwnerLoading ? (
-            <p>Loading owner...</p>
-          ) : owner &&
-            owner.toLowerCase() === address?.toLowerCase() ? (
-            <TransactionButton
-              transaction={() => withdrawTipsTx}
-              onTransactionConfirmed={() => alert("Balance withdrawn!")}
-            >
-              Withdraw Balance
-            </TransactionButton>
+            <p>Checking treasury permissions...</p>
+          ) : isOwner ? (
+            <div className={styles.ownerSection}>
+              <p className={styles.ownerStatus}>✅ You are the treasury manager</p>
+              <TransactionButton
+                transaction={() => withdrawTipsTx}
+                onTransactionSent={() => setIsWithdrawing(true)}
+                onTransactionConfirmed={() => {
+                  setIsWithdrawing(false);
+                  alert("🎉 Treasury funds withdrawn successfully!");
+                }}
+                onError={() => {
+                  setIsWithdrawing(false);
+                  alert("❌ Withdrawal failed. Please try again.");
+                }}
+                disabled={isWithdrawing || !tipJarBalance || tipJarBalance === 0n}
+              >
+                {isWithdrawing 
+                  ? "🔄 Processing Withdrawal..." 
+                  : "💰 Withdraw Treasury"
+                }
+              </TransactionButton>
+            </div>
           ) : (
-            <p>Only the owner can withdraw the balance.</p>
+            <div className={styles.restrictedAccess}>
+              <p>🔒 Only the project owner can manage treasury funds.</p>
+              {address && (
+                <small>Your address: {address.slice(0, 6)}...{address.slice(-4)}</small>
+              )}
+            </div>
           )}
+        </div>
+      </div>
+      
+      {/* Network & Project Info */}
+      <div className={styles.networkInfo}>
+        <div className={styles.infoGrid}>
+          <div className={styles.networkCard}>
+            <h4>🌐 Network</h4>
+            <p><strong>BlockDAG Primordial Testnet</strong></p>
+            <p>Chain ID: 1043</p>
+          </div>
+          <div className={styles.explorerCard}>
+            <h4>🔗 Block Explorer</h4>
+            <a 
+              href="https://primordial.bdagscan.com/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className={styles.explorerButton}
+            >
+              primordial.bdagscan.com
+            </a>
+          </div>
+          <div className={styles.projectCard}>
+            <h4>🚀 Project</h4>
+            <p><strong>Trekers MetaVerse Marketplace</strong></p>
+            <a 
+              href="https://github.com/Crusherbolt/Trekers-MetaVerse-Marketplace" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className={styles.githubLink}
+            >
+              View on GitHub
+            </a>
+          </div>
         </div>
       </div>
     </div>
