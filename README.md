@@ -304,6 +304,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **OpenZeppelin** for secure smart contract libraries
 - **React & Next.js** teams for excellent frontend frameworks
 
+## DEMO VIDEO (https://youtu.be/iQOWeNHA9OI)
+
 ## 📞 Contact & Support
 
 - **GitHub Issues:** [Report bugs or request features](https://github.com/Crusherbolt/Trekers-MetaVerse-Marketplace/issues)
