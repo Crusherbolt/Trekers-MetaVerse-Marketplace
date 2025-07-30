@@ -312,4 +312,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **🎮 Ready to own the metaverse? Start playing TREKER today!**
 
-*Built with ❤️ for the BlockDAG Hackathon 2025*
+*Built with ❤️ for the BlockDAG Hackathon 2025 along with my teammates Anshul Bari, Nikhil Kumar, Aditya Singh
